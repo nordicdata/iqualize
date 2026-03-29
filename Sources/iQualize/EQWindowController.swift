@@ -54,13 +54,57 @@ final class FrequencyResponseView: NSView {
         return height / 2.0 + CGFloat(norm) * (height / 2.0)
     }
 
+    /// Per-band gain contribution using filter-type-appropriate response curves.
+    private func bandGain(for band: EQBand, at freq: Float) -> Float {
+        let u = freq / band.frequency  // normalized frequency ratio
+
+        switch band.filterType {
+        case .parametric:
+            // Gaussian bell approximation — visually matches parametric EQ
+            let octaves = log2(u)
+            let sigma = band.bandwidth / 2.0
+            return band.gain * exp(-0.5 * (octaves / sigma) * (octaves / sigma))
+
+        case .lowShelf:
+            // S-curve: full gain below cutoff, tapers to 0 above
+            let octaves = log2(u)
+            let slope = 4.0 / max(band.bandwidth, 0.1)
+            return band.gain * 0.5 * (1.0 - tanh(slope * octaves))
+
+        case .highShelf:
+            // S-curve: 0 below cutoff, tapers to full gain above
+            let octaves = log2(u)
+            let slope = 4.0 / max(band.bandwidth, 0.1)
+            return band.gain * 0.5 * (1.0 + tanh(slope * octaves))
+
+        case .lowPass:
+            // Second-order low pass: |H|² = 1 / ((1−u²)² + (u/Q)²)
+            let Q = 1.0 / (2.0 * sinh(log(2.0) / 2.0 * max(band.bandwidth, 0.1)))
+            let u2 = u * u
+            let denom = (1.0 - u2) * (1.0 - u2) + (u / Q) * (u / Q)
+            return -10.0 * log10(max(denom, 1e-10))
+
+        case .highPass:
+            // Second-order high pass: |H|² = u⁴ / ((1−u²)² + (u/Q)²)
+            let Q = 1.0 / (2.0 * sinh(log(2.0) / 2.0 * max(band.bandwidth, 0.1)))
+            let u2 = u * u
+            let denom = (1.0 - u2) * (1.0 - u2) + (u / Q) * (u / Q)
+            return 10.0 * log10(max(u2 * u2, 1e-10)) - 10.0 * log10(max(denom, 1e-10))
+
+        case .bandPass:
+            // Second-order bandpass: |H|² = (u/Q)² / ((1−u²)² + (u/Q)²)
+            let Q = 1.0 / (2.0 * sinh(log(2.0) / 2.0 * max(band.bandwidth, 0.1)))
+            let u2 = u * u
+            let uOverQ = u / Q
+            let denom = (1.0 - u2) * (1.0 - u2) + uOverQ * uOverQ
+            return 10.0 * log10(max(uOverQ * uOverQ, 1e-10)) - 10.0 * log10(max(denom, 1e-10))
+        }
+    }
+
     private func compositeGain(at freq: Float) -> Float {
         var total: Float = 0
         for band in bands {
-            let octaves = log2(freq / band.frequency)
-            let sigma = band.bandwidth / 2.0
-            let exponent = -0.5 * (octaves / sigma) * (octaves / sigma)
-            total += band.gain * exp(exponent)
+            total += bandGain(for: band, at: freq)
         }
         return total
     }
@@ -167,11 +211,12 @@ final class FrequencyResponseView: NSView {
             ctx.strokePath()
         }
 
-        // Band markers
+        // Band markers — show composite gain at each band's frequency
         let markerRadius: CGFloat = 4
         for band in bands {
             let x = freqToX(band.frequency, width: plotRect.width) + plotRect.minX
-            let clamped = min(max(band.gain, -maxGainDB), maxGainDB)
+            let actualGain = compositeGain(at: band.frequency)
+            let clamped = min(max(actualGain, -maxGainDB), maxGainDB)
             let y = gainToY(clamped, height: plotRect.height) + plotRect.minY
             let markerRect = CGRect(x: x - markerRadius, y: y - markerRadius,
                                      width: markerRadius * 2, height: markerRadius * 2)
