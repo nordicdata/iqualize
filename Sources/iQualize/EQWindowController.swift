@@ -66,7 +66,7 @@ final class FrequencyResponseView: NSView {
         switch band.filterType {
         case .parametric:
             // Bell — gaussian peak/dip centered on frequency
-            let sigma = band.bandwidth / 2.0
+            let sigma = max(band.bandwidth, 0.1) / 2.0
             return band.gain * exp(-0.5 * (octaves / sigma) * (octaves / sigma))
 
         case .lowShelf:
@@ -1494,6 +1494,7 @@ final class EQWindowController: NSWindowController, NSTextFieldDelegate {
         var preset = audioEngine.activePreset
         preset.bands[index].filterType = selectedType
         audioEngine.activePreset = preset
+        updateCurveView()
         markModified()
         registerUndo("Change Filter Type", oldPreset: oldPreset)
     }

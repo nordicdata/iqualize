@@ -2,7 +2,7 @@
 
 All notable changes to iQualize will be documented in this file.
 
-## [0.9.0] - 2026-03-30
+## [0.10.0] - 2026-03-30
 
 ### Added
 - Per-band filter type selection with 7 filter types: Bell (parametric), Low Shelf, High Shelf, Low Pass, High Pass, Band Pass, and Notch
@@ -19,3 +19,5 @@ All notable changes to iQualize will be documented in this file.
 ### Fixed
 - Curve alignment with slider handles across all band configurations
 - Coordinate conversion through flipped/non-flipped view hierarchies
+- Frequency response curve now updates when changing a band's filter type
+- Guard against division by zero with zero-bandwidth parametric bands
