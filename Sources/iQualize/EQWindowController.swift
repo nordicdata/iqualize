@@ -220,6 +220,7 @@ final class EQWindowController: NSWindowController, NSTextFieldDelegate {
     private var gainLabels: [UnitTextField] = []
     private var freqLabels: [UnitTextField] = []
     private var qLabels: [UnitTextField] = []
+    private var filterTypePickers: [NSPopUpButton] = []
     private var bypassCheckbox: NSButton!
     private var clippingCheckbox: NSButton!
     private var lowLatencyCheckbox: NSButton!
@@ -243,7 +244,7 @@ final class EQWindowController: NSWindowController, NSTextFieldDelegate {
         self.presetStore = presetStore
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 600, height: 420),
+            contentRect: NSRect(x: 0, y: 0, width: 600, height: 455),
             styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered,
             defer: false
@@ -251,7 +252,7 @@ final class EQWindowController: NSWindowController, NSTextFieldDelegate {
         window.title = "iQualize"
         window.center()
         window.isReleasedWhenClosed = false
-        window.minSize = NSSize(width: 480, height: 420)
+        window.minSize = NSSize(width: 480, height: 455)
 
         super.init(window: window)
 
@@ -478,6 +479,7 @@ final class EQWindowController: NSWindowController, NSTextFieldDelegate {
         gainLabels.removeAll()
         freqLabels.removeAll()
         qLabels.removeAll()
+        filterTypePickers.removeAll()
 
         let bands = audioEngine.activePreset.bands
         let canAdd = bands.count < EQPresetData.maxBandCount
@@ -562,11 +564,27 @@ final class EQWindowController: NSWindowController, NSTextFieldDelegate {
             }
             qLabels.append(qLabel)
 
+            let typePicker = NSPopUpButton(frame: .zero, pullsDown: false)
+            typePicker.font = .systemFont(ofSize: 9)
+            typePicker.controlSize = .small
+            typePicker.tag = i
+            for ft in FilterType.allCases {
+                typePicker.addItem(withTitle: ft.displayName)
+                typePicker.lastItem?.representedObject = ft
+            }
+            if let idx = FilterType.allCases.firstIndex(of: band.filterType) {
+                typePicker.selectItem(at: idx)
+            }
+            typePicker.target = self
+            typePicker.action = #selector(filterTypeChanged(_:))
+            filterTypePickers.append(typePicker)
+
             column.setupHandle()
             column.addArrangedSubview(gainLabel)
             column.addArrangedSubview(slider)
             column.addArrangedSubview(freqLabel)
             column.addArrangedSubview(qLabel)
+            column.addArrangedSubview(typePicker)
             column.addArrangedSubview(column.dragHandle)
 
             // Right-click context menu
@@ -1032,6 +1050,23 @@ final class EQWindowController: NSWindowController, NSTextFieldDelegate {
             registerUndo("Adjust Gain", oldPreset: snapshot)
             sliderDragSnapshot = nil
         }
+    }
+
+    @objc private func filterTypeChanged(_ sender: NSPopUpButton) {
+        let index = sender.tag
+        guard index < audioEngine.activePreset.bands.count,
+              let selectedType = sender.selectedItem?.representedObject as? FilterType else { return }
+
+        let band = audioEngine.activePreset.bands[index]
+        guard selectedType != band.filterType else { return }
+
+        let oldPreset = audioEngine.activePreset
+        forkIfBuiltIn()
+        var preset = audioEngine.activePreset
+        preset.bands[index].filterType = selectedType
+        audioEngine.activePreset = preset
+        markModified()
+        registerUndo("Change Filter Type", oldPreset: oldPreset)
     }
 
     @objc private func resetPreset(_ sender: NSButton) {
