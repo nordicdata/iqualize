@@ -392,8 +392,7 @@ final class EQWindowController: NSWindowController, NSTextFieldDelegate {
     private var deleteButton: NSButton!
     private var importExportButton: NSButton!
     private var curveView: FrequencyResponseView!
-    private var curveDisclosure: NSButton!
-    private var curveHeightConstraint: NSLayoutConstraint!
+    private var curveToggle: NSButton!
 
     /// Snapshot of the preset when it was loaded/saved, for reset.
     private var savedPresetSnapshot: EQPresetData?
@@ -566,49 +565,46 @@ final class EQWindowController: NSWindowController, NSTextFieldDelegate {
             self?.reorderBand(from: from, to: to)
         }
 
-        mainStack.addArrangedSubview(slidersContainer)
-        slidersContainer.leadingAnchor.constraint(greaterThanOrEqualTo: mainStack.leadingAnchor, constant: 16).isActive = true
-        slidersContainer.trailingAnchor.constraint(lessThanOrEqualTo: mainStack.trailingAnchor, constant: -16).isActive = true
+        // Wrap sliders + curve in a vertical container so they share width
+        let bandsAndCurve = NSStackView()
+        bandsAndCurve.orientation = .vertical
+        bandsAndCurve.alignment = .centerX
+        bandsAndCurve.spacing = 8
+        bandsAndCurve.translatesAutoresizingMaskIntoConstraints = false
 
-        // Frequency response curve (collapsible, below bands)
-        let curveWrapper = NSView()
-        curveWrapper.translatesAutoresizingMaskIntoConstraints = false
-        mainStack.addArrangedSubview(curveWrapper)
+        bandsAndCurve.addArrangedSubview(slidersContainer)
 
-        // Toggle row: chevron + label
-        curveDisclosure = NSButton(title: "", target: self, action: #selector(toggleCurve(_:)))
-        curveDisclosure.bezelStyle = .inline
-        curveDisclosure.isBordered = false
-        curveDisclosure.setButtonType(.momentaryPushIn)
-        curveDisclosure.font = .systemFont(ofSize: 10)
-        curveDisclosure.contentTintColor = .secondaryLabelColor
-        curveDisclosure.title = "\u{25B6} Response Curve"
-        curveDisclosure.translatesAutoresizingMaskIntoConstraints = false
-        curveWrapper.addSubview(curveDisclosure)
+        // Curve toggle — small disclosure triangle style
+        curveToggle = NSButton(title: "", target: self, action: #selector(toggleCurve(_:)))
+        curveToggle.bezelStyle = .disclosure
+        curveToggle.setButtonType(.pushOnPushOff)
+        curveToggle.title = ""
+        curveToggle.state = .off
+        curveToggle.translatesAutoresizingMaskIntoConstraints = false
+
+        let toggleLabel = NSTextField(labelWithString: "Response Curve")
+        toggleLabel.font = .systemFont(ofSize: 10)
+        toggleLabel.textColor = .secondaryLabelColor
+
+        let toggleRow = NSStackView(views: [curveToggle, toggleLabel])
+        toggleRow.orientation = .horizontal
+        toggleRow.spacing = 2
+        toggleRow.alignment = .centerY
+        bandsAndCurve.addArrangedSubview(toggleRow)
 
         curveView = FrequencyResponseView()
         curveView.translatesAutoresizingMaskIntoConstraints = false
         curveView.isHidden = true
-        curveWrapper.addSubview(curveView)
+        curveView.heightAnchor.constraint(equalToConstant: 120).isActive = true
+        bandsAndCurve.addArrangedSubview(curveView)
 
-        curveHeightConstraint = curveView.heightAnchor.constraint(equalToConstant: 120)
-        curveHeightConstraint.isActive = true
+        // Curve matches sliders width
+        curveView.leadingAnchor.constraint(equalTo: slidersContainer.leadingAnchor).isActive = true
+        curveView.trailingAnchor.constraint(equalTo: slidersContainer.trailingAnchor).isActive = true
 
-        NSLayoutConstraint.activate([
-            // Pin wrapper to slidersContainer width
-            curveWrapper.leadingAnchor.constraint(equalTo: slidersContainer.leadingAnchor),
-            curveWrapper.trailingAnchor.constraint(equalTo: slidersContainer.trailingAnchor),
-
-            // Toggle at top of wrapper
-            curveDisclosure.topAnchor.constraint(equalTo: curveWrapper.topAnchor),
-            curveDisclosure.leadingAnchor.constraint(equalTo: curveWrapper.leadingAnchor),
-
-            // Curve below toggle
-            curveView.topAnchor.constraint(equalTo: curveDisclosure.bottomAnchor, constant: 6),
-            curveView.leadingAnchor.constraint(equalTo: curveWrapper.leadingAnchor),
-            curveView.trailingAnchor.constraint(equalTo: curveWrapper.trailingAnchor),
-            curveView.bottomAnchor.constraint(equalTo: curveWrapper.bottomAnchor),
-        ])
+        mainStack.addArrangedSubview(bandsAndCurve)
+        bandsAndCurve.leadingAnchor.constraint(greaterThanOrEqualTo: mainStack.leadingAnchor, constant: 16).isActive = true
+        bandsAndCurve.trailingAnchor.constraint(lessThanOrEqualTo: mainStack.trailingAnchor, constant: -16).isActive = true
 
         // Divider below bands
         let bottomDivider = NSBox()
@@ -996,13 +992,11 @@ final class EQWindowController: NSWindowController, NSTextFieldDelegate {
     // MARK: - Actions
 
     @objc private func toggleCurve(_ sender: NSButton) {
-        let wasHidden = curveView.isHidden
-        curveView.isHidden = !wasHidden
-        curveDisclosure.title = wasHidden ? "\u{25BC} Response Curve" : "\u{25B6} Response Curve"
+        let expanding = curveView.isHidden
+        curveView.isHidden = !expanding
 
-        // Animate window height change
         if let window = self.window {
-            let delta: CGFloat = wasHidden ? 132 : -132  // 120 + spacing
+            let delta: CGFloat = expanding ? 128 : -128
             var frame = window.frame
             frame.size.height += delta
             frame.origin.y -= delta
