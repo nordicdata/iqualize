@@ -392,6 +392,7 @@ final class EQWindowController: NSWindowController, NSTextFieldDelegate {
     private var deleteButton: NSButton!
     private var importExportButton: NSButton!
     private var curveView: FrequencyResponseView!
+    private var curveToggle: NSButton!
 
     /// Snapshot of the preset when it was loaded/saved, for reset.
     private var savedPresetSnapshot: EQPresetData?
@@ -404,7 +405,7 @@ final class EQWindowController: NSWindowController, NSTextFieldDelegate {
         self.presetStore = presetStore
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 600, height: 550),
+            contentRect: NSRect(x: 0, y: 0, width: 600, height: 420),
             styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered,
             defer: false
@@ -412,7 +413,7 @@ final class EQWindowController: NSWindowController, NSTextFieldDelegate {
         window.title = "iQualize"
         window.center()
         window.isReleasedWhenClosed = false
-        window.minSize = NSSize(width: 480, height: 550)
+        window.minSize = NSSize(width: 480, height: 420)
 
         super.init(window: window)
 
@@ -552,14 +553,6 @@ final class EQWindowController: NSWindowController, NSTextFieldDelegate {
         topDivider.leadingAnchor.constraint(equalTo: mainStack.leadingAnchor, constant: 16).isActive = true
         topDivider.trailingAnchor.constraint(equalTo: mainStack.trailingAnchor, constant: -16).isActive = true
 
-        // Frequency response curve
-        curveView = FrequencyResponseView()
-        curveView.translatesAutoresizingMaskIntoConstraints = false
-        mainStack.addArrangedSubview(curveView)
-        curveView.leadingAnchor.constraint(equalTo: mainStack.leadingAnchor, constant: 16).isActive = true
-        curveView.trailingAnchor.constraint(equalTo: mainStack.trailingAnchor, constant: -16).isActive = true
-        curveView.heightAnchor.constraint(equalToConstant: 120).isActive = true
-
         // Row 2: Sliders area
         slidersContainer = BandDropTarget()
         slidersContainer.orientation = .horizontal
@@ -572,9 +565,46 @@ final class EQWindowController: NSWindowController, NSTextFieldDelegate {
             self?.reorderBand(from: from, to: to)
         }
 
-        mainStack.addArrangedSubview(slidersContainer)
-        slidersContainer.leadingAnchor.constraint(greaterThanOrEqualTo: mainStack.leadingAnchor, constant: 16).isActive = true
-        slidersContainer.trailingAnchor.constraint(lessThanOrEqualTo: mainStack.trailingAnchor, constant: -16).isActive = true
+        // Wrap sliders + curve in a vertical container so they share width
+        let bandsAndCurve = NSStackView()
+        bandsAndCurve.orientation = .vertical
+        bandsAndCurve.alignment = .centerX
+        bandsAndCurve.spacing = 8
+        bandsAndCurve.translatesAutoresizingMaskIntoConstraints = false
+
+        bandsAndCurve.addArrangedSubview(slidersContainer)
+
+        // Curve toggle — small disclosure triangle style
+        curveToggle = NSButton(title: "", target: self, action: #selector(toggleCurve(_:)))
+        curveToggle.bezelStyle = .disclosure
+        curveToggle.setButtonType(.pushOnPushOff)
+        curveToggle.title = ""
+        curveToggle.state = .off
+        curveToggle.translatesAutoresizingMaskIntoConstraints = false
+
+        let toggleLabel = NSTextField(labelWithString: "Response Curve")
+        toggleLabel.font = .systemFont(ofSize: 10)
+        toggleLabel.textColor = .secondaryLabelColor
+
+        let toggleRow = NSStackView(views: [curveToggle, toggleLabel])
+        toggleRow.orientation = .horizontal
+        toggleRow.spacing = 2
+        toggleRow.alignment = .centerY
+        bandsAndCurve.addArrangedSubview(toggleRow)
+
+        curveView = FrequencyResponseView()
+        curveView.translatesAutoresizingMaskIntoConstraints = false
+        curveView.isHidden = true
+        curveView.heightAnchor.constraint(equalToConstant: 120).isActive = true
+        bandsAndCurve.addArrangedSubview(curveView)
+
+        mainStack.addArrangedSubview(bandsAndCurve)
+        bandsAndCurve.leadingAnchor.constraint(greaterThanOrEqualTo: mainStack.leadingAnchor, constant: 16).isActive = true
+        bandsAndCurve.trailingAnchor.constraint(lessThanOrEqualTo: mainStack.trailingAnchor, constant: -16).isActive = true
+
+        // Curve matches full window width like the dividers
+        curveView.leadingAnchor.constraint(equalTo: mainStack.leadingAnchor, constant: 16).isActive = true
+        curveView.trailingAnchor.constraint(equalTo: mainStack.trailingAnchor, constant: -16).isActive = true
 
         // Divider below bands
         let bottomDivider = NSBox()
@@ -960,6 +990,19 @@ final class EQWindowController: NSWindowController, NSTextFieldDelegate {
     }
 
     // MARK: - Actions
+
+    @objc private func toggleCurve(_ sender: NSButton) {
+        let expanding = curveView.isHidden
+        curveView.isHidden = !expanding
+
+        if let window = self.window {
+            let delta: CGFloat = expanding ? 128 : -128
+            var frame = window.frame
+            frame.size.height += delta
+            frame.origin.y -= delta
+            window.setFrame(frame, display: true, animate: true)
+        }
+    }
 
     @objc private func toggleBypass(_ sender: NSButton) {
         audioEngine.bypassed = sender.state == .on
