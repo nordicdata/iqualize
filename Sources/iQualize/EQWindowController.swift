@@ -34,14 +34,13 @@ final class FrequencyResponseView: NSView {
     private var bands: [EQBand] = []
     private var maxGainDB: Float = 12
 
+    /// When true, draws with transparent background (for use as slider backdrop).
+    var isBackdrop = false
+
     func updateBands(_ bands: [EQBand], maxGainDB: Float) {
         self.bands = bands
         self.maxGainDB = maxGainDB
         needsDisplay = true
-    }
-
-    override var intrinsicContentSize: NSSize {
-        NSSize(width: NSView.noIntrinsicMetric, height: 120)
     }
 
     private func freqToX(_ freq: Float, width: CGFloat) -> CGFloat {
@@ -60,39 +59,33 @@ final class FrequencyResponseView: NSView {
 
         switch band.filterType {
         case .parametric:
-            // Gaussian bell approximation — visually matches parametric EQ
             let octaves = log2(u)
             let sigma = band.bandwidth / 2.0
             return band.gain * exp(-0.5 * (octaves / sigma) * (octaves / sigma))
 
         case .lowShelf:
-            // S-curve: full gain below cutoff, tapers to 0 above
             let octaves = log2(u)
             let slope = 4.0 / max(band.bandwidth, 0.1)
             return band.gain * 0.5 * (1.0 - tanh(slope * octaves))
 
         case .highShelf:
-            // S-curve: 0 below cutoff, tapers to full gain above
             let octaves = log2(u)
             let slope = 4.0 / max(band.bandwidth, 0.1)
             return band.gain * 0.5 * (1.0 + tanh(slope * octaves))
 
         case .lowPass:
-            // Second-order low pass: |H|² = 1 / ((1−u²)² + (u/Q)²)
             let Q = 1.0 / (2.0 * sinh(log(2.0) / 2.0 * max(band.bandwidth, 0.1)))
             let u2 = u * u
             let denom = (1.0 - u2) * (1.0 - u2) + (u / Q) * (u / Q)
             return -10.0 * log10(max(denom, 1e-10))
 
         case .highPass:
-            // Second-order high pass: |H|² = u⁴ / ((1−u²)² + (u/Q)²)
             let Q = 1.0 / (2.0 * sinh(log(2.0) / 2.0 * max(band.bandwidth, 0.1)))
             let u2 = u * u
             let denom = (1.0 - u2) * (1.0 - u2) + (u / Q) * (u / Q)
             return 10.0 * log10(max(u2 * u2, 1e-10)) - 10.0 * log10(max(denom, 1e-10))
 
         case .bandPass:
-            // Second-order bandpass: |H|² = (u/Q)² / ((1−u²)² + (u/Q)²)
             let Q = 1.0 / (2.0 * sinh(log(2.0) / 2.0 * max(band.bandwidth, 0.1)))
             let u2 = u * u
             let uOverQ = u / Q
@@ -112,23 +105,26 @@ final class FrequencyResponseView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
         let b = bounds
-        let inset: CGFloat = 4
+        let inset: CGFloat = isBackdrop ? 0 : 4
         let plotRect = b.insetBy(dx: inset, dy: inset)
 
-        // Background
-        let bgPath = NSBezierPath(roundedRect: b, xRadius: 6, yRadius: 6)
-        NSColor.controlBackgroundColor.setFill()
-        bgPath.fill()
-        NSColor.separatorColor.setStroke()
-        bgPath.lineWidth = 0.5
-        bgPath.stroke()
+        if !isBackdrop {
+            // Standalone mode: draw own background
+            let bgPath = NSBezierPath(roundedRect: b, xRadius: 6, yRadius: 6)
+            NSColor.controlBackgroundColor.setFill()
+            bgPath.fill()
+            NSColor.separatorColor.setStroke()
+            bgPath.lineWidth = 0.5
+            bgPath.stroke()
+        }
 
         ctx.saveGState()
         ctx.clip(to: plotRect)
 
         // Grid: 0 dB center line
         let zeroY = plotRect.minY + plotRect.height / 2.0
-        ctx.setStrokeColor(NSColor.separatorColor.cgColor)
+        let gridAlpha: CGFloat = isBackdrop ? 0.15 : 1.0
+        ctx.setStrokeColor(NSColor.separatorColor.withAlphaComponent(0.5 * gridAlpha).cgColor)
         ctx.setLineWidth(0.5)
         ctx.move(to: CGPoint(x: plotRect.minX, y: zeroY))
         ctx.addLine(to: CGPoint(x: plotRect.maxX, y: zeroY))
@@ -137,7 +133,7 @@ final class FrequencyResponseView: NSView {
         // Dashed dB grid lines
         let dashPattern: [CGFloat] = [4, 4]
         ctx.setLineDash(phase: 0, lengths: dashPattern)
-        ctx.setStrokeColor(NSColor.separatorColor.withAlphaComponent(0.3).cgColor)
+        ctx.setStrokeColor(NSColor.separatorColor.withAlphaComponent(0.15 * gridAlpha).cgColor)
         let dbStep: Float = maxGainDB <= 12 ? 6 : 12
         var dbLine = dbStep
         while dbLine < maxGainDB {
@@ -160,16 +156,18 @@ final class FrequencyResponseView: NSView {
         ctx.strokePath()
         ctx.setLineDash(phase: 0, lengths: [])
 
-        // Freq labels
-        let labelAttrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 8),
-            .foregroundColor: NSColor.tertiaryLabelColor,
-        ]
-        for freq in freqMarkers {
-            let x = freqToX(freq, width: plotRect.width) + plotRect.minX
-            let label = freq >= 1000 ? "\(Int(freq / 1000))k" : "\(Int(freq))"
-            let str = NSAttributedString(string: label, attributes: labelAttrs)
-            str.draw(at: CGPoint(x: x + 2, y: plotRect.minY + 1))
+        // Freq labels (skip in backdrop mode — they'd be hidden by sliders)
+        if !isBackdrop {
+            let labelAttrs: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: 8),
+                .foregroundColor: NSColor.tertiaryLabelColor,
+            ]
+            for freq in freqMarkers {
+                let x = freqToX(freq, width: plotRect.width) + plotRect.minX
+                let label = freq >= 1000 ? "\(Int(freq / 1000))k" : "\(Int(freq))"
+                let str = NSAttributedString(string: label, attributes: labelAttrs)
+                str.draw(at: CGPoint(x: x + 2, y: plotRect.minY + 1))
+            }
         }
 
         // Composite curve
@@ -185,6 +183,9 @@ final class FrequencyResponseView: NSView {
             curvePoints.append(CGPoint(x: x, y: y))
         }
 
+        let fillAlpha: CGFloat = isBackdrop ? 0.08 : 0.15
+        let strokeAlpha: CGFloat = isBackdrop ? 0.4 : 0.8
+
         // Filled area from curve to 0dB line
         if !curvePoints.isEmpty {
             let fillPath = CGMutablePath()
@@ -196,8 +197,7 @@ final class FrequencyResponseView: NSView {
             ctx.saveGState()
             ctx.addPath(fillPath)
             ctx.clip()
-            let fillColor = NSColor.controlAccentColor.withAlphaComponent(0.15).cgColor
-            ctx.setFillColor(fillColor)
+            ctx.setFillColor(NSColor.controlAccentColor.withAlphaComponent(fillAlpha).cgColor)
             ctx.fill(plotRect)
             ctx.restoreGState()
 
@@ -205,26 +205,28 @@ final class FrequencyResponseView: NSView {
             let curvePath = CGMutablePath()
             curvePath.move(to: curvePoints[0])
             for pt in curvePoints.dropFirst() { curvePath.addLine(to: pt) }
-            ctx.setStrokeColor(NSColor.controlAccentColor.withAlphaComponent(0.8).cgColor)
-            ctx.setLineWidth(1.5)
+            ctx.setStrokeColor(NSColor.controlAccentColor.withAlphaComponent(strokeAlpha).cgColor)
+            ctx.setLineWidth(isBackdrop ? 1.0 : 1.5)
             ctx.addPath(curvePath)
             ctx.strokePath()
         }
 
-        // Band markers — show composite gain at each band's frequency
-        let markerRadius: CGFloat = 4
-        for band in bands {
-            let x = freqToX(band.frequency, width: plotRect.width) + plotRect.minX
-            let actualGain = compositeGain(at: band.frequency)
-            let clamped = min(max(actualGain, -maxGainDB), maxGainDB)
-            let y = gainToY(clamped, height: plotRect.height) + plotRect.minY
-            let markerRect = CGRect(x: x - markerRadius, y: y - markerRadius,
-                                     width: markerRadius * 2, height: markerRadius * 2)
-            ctx.setFillColor(NSColor.controlAccentColor.cgColor)
-            ctx.fillEllipse(in: markerRect)
-            ctx.setStrokeColor(NSColor.controlBackgroundColor.cgColor)
-            ctx.setLineWidth(1)
-            ctx.strokeEllipse(in: markerRect)
+        // Band markers (skip in backdrop mode — sliders serve as markers)
+        if !isBackdrop {
+            let markerRadius: CGFloat = 4
+            for band in bands {
+                let x = freqToX(band.frequency, width: plotRect.width) + plotRect.minX
+                let actualGain = compositeGain(at: band.frequency)
+                let clamped = min(max(actualGain, -maxGainDB), maxGainDB)
+                let y = gainToY(clamped, height: plotRect.height) + plotRect.minY
+                let markerRect = CGRect(x: x - markerRadius, y: y - markerRadius,
+                                         width: markerRadius * 2, height: markerRadius * 2)
+                ctx.setFillColor(NSColor.controlAccentColor.cgColor)
+                ctx.fillEllipse(in: markerRect)
+                ctx.setStrokeColor(NSColor.controlBackgroundColor.cgColor)
+                ctx.setLineWidth(1)
+                ctx.strokeEllipse(in: markerRect)
+            }
         }
 
         ctx.restoreGState()
@@ -543,7 +545,6 @@ final class EQWindowController: NSWindowController, NSTextFieldDelegate {
     private var deleteButton: NSButton!
     private var importExportButton: NSButton!
     private var curveView: FrequencyResponseView!
-    private var curveToggle: NSButton!
 
     /// Snapshot of the preset when it was loaded/saved, for reset.
     private var savedPresetSnapshot: EQPresetData?
@@ -556,7 +557,7 @@ final class EQWindowController: NSWindowController, NSTextFieldDelegate {
         self.presetStore = presetStore
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 600, height: 455),
+            contentRect: NSRect(x: 0, y: 0, width: 600, height: 420),
             styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered,
             defer: false
@@ -564,7 +565,7 @@ final class EQWindowController: NSWindowController, NSTextFieldDelegate {
         window.title = "iQualize"
         window.center()
         window.isReleasedWhenClosed = false
-        window.minSize = NSSize(width: 480, height: 455)
+        window.minSize = NSSize(width: 480, height: 420)
 
         super.init(window: window)
 
@@ -704,7 +705,7 @@ final class EQWindowController: NSWindowController, NSTextFieldDelegate {
         topDivider.leadingAnchor.constraint(equalTo: mainStack.leadingAnchor, constant: 16).isActive = true
         topDivider.trailingAnchor.constraint(equalTo: mainStack.trailingAnchor, constant: -16).isActive = true
 
-        // Row 2: Sliders area
+        // Row 2: Sliders area with response curve as backdrop
         slidersContainer = BandDropTarget()
         slidersContainer.orientation = .horizontal
         slidersContainer.alignment = .bottom
@@ -716,46 +717,32 @@ final class EQWindowController: NSWindowController, NSTextFieldDelegate {
             self?.reorderBand(from: from, to: to)
         }
 
-        // Wrap sliders + curve in a vertical container so they share width
-        let bandsAndCurve = NSStackView()
-        bandsAndCurve.orientation = .vertical
-        bandsAndCurve.alignment = .centerX
-        bandsAndCurve.spacing = 8
-        bandsAndCurve.translatesAutoresizingMaskIntoConstraints = false
-
-        bandsAndCurve.addArrangedSubview(slidersContainer)
-
-        // Curve toggle — small disclosure triangle style
-        curveToggle = NSButton(title: "", target: self, action: #selector(toggleCurve(_:)))
-        curveToggle.bezelStyle = .disclosure
-        curveToggle.setButtonType(.pushOnPushOff)
-        curveToggle.title = ""
-        curveToggle.state = .off
-        curveToggle.translatesAutoresizingMaskIntoConstraints = false
-
-        let toggleLabel = NSTextField(labelWithString: "Response Curve")
-        toggleLabel.font = .systemFont(ofSize: 10)
-        toggleLabel.textColor = .secondaryLabelColor
-
-        let toggleRow = NSStackView(views: [curveToggle, toggleLabel])
-        toggleRow.orientation = .horizontal
-        toggleRow.spacing = 2
-        toggleRow.alignment = .centerY
-        bandsAndCurve.addArrangedSubview(toggleRow)
+        // Wrapper view: curve as background, sliders on top
+        let bandsWrapper = NSView()
+        bandsWrapper.translatesAutoresizingMaskIntoConstraints = false
 
         curveView = FrequencyResponseView()
+        curveView.isBackdrop = true
         curveView.translatesAutoresizingMaskIntoConstraints = false
-        curveView.isHidden = true
-        curveView.heightAnchor.constraint(equalToConstant: 120).isActive = true
-        bandsAndCurve.addArrangedSubview(curveView)
 
-        mainStack.addArrangedSubview(bandsAndCurve)
-        bandsAndCurve.leadingAnchor.constraint(greaterThanOrEqualTo: mainStack.leadingAnchor, constant: 16).isActive = true
-        bandsAndCurve.trailingAnchor.constraint(lessThanOrEqualTo: mainStack.trailingAnchor, constant: -16).isActive = true
+        bandsWrapper.addSubview(curveView)
+        bandsWrapper.addSubview(slidersContainer)
 
-        // Curve matches full window width like the dividers
-        curveView.leadingAnchor.constraint(equalTo: mainStack.leadingAnchor, constant: 16).isActive = true
-        curveView.trailingAnchor.constraint(equalTo: mainStack.trailingAnchor, constant: -16).isActive = true
+        // Pin curve to fill the wrapper
+        curveView.leadingAnchor.constraint(equalTo: bandsWrapper.leadingAnchor).isActive = true
+        curveView.trailingAnchor.constraint(equalTo: bandsWrapper.trailingAnchor).isActive = true
+        curveView.topAnchor.constraint(equalTo: bandsWrapper.topAnchor).isActive = true
+        curveView.bottomAnchor.constraint(equalTo: bandsWrapper.bottomAnchor).isActive = true
+
+        // Pin sliders to fill the wrapper (on top of curve)
+        slidersContainer.leadingAnchor.constraint(equalTo: bandsWrapper.leadingAnchor).isActive = true
+        slidersContainer.trailingAnchor.constraint(equalTo: bandsWrapper.trailingAnchor).isActive = true
+        slidersContainer.topAnchor.constraint(equalTo: bandsWrapper.topAnchor).isActive = true
+        slidersContainer.bottomAnchor.constraint(equalTo: bandsWrapper.bottomAnchor).isActive = true
+
+        mainStack.addArrangedSubview(bandsWrapper)
+        bandsWrapper.leadingAnchor.constraint(greaterThanOrEqualTo: mainStack.leadingAnchor, constant: 16).isActive = true
+        bandsWrapper.trailingAnchor.constraint(lessThanOrEqualTo: mainStack.trailingAnchor, constant: -16).isActive = true
 
         // Divider below bands
         let bottomDivider = NSBox()
@@ -1140,19 +1127,6 @@ final class EQWindowController: NSWindowController, NSTextFieldDelegate {
     }
 
     // MARK: - Actions
-
-    @objc private func toggleCurve(_ sender: NSButton) {
-        let expanding = curveView.isHidden
-        curveView.isHidden = !expanding
-
-        if let window = self.window {
-            let delta: CGFloat = expanding ? 128 : -128
-            var frame = window.frame
-            frame.size.height += delta
-            frame.origin.y -= delta
-            window.setFrame(frame, display: true, animate: true)
-        }
-    }
 
     @objc private func toggleBypass(_ sender: NSButton) {
         audioEngine.bypassed = sender.state == .on
