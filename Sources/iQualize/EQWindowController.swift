@@ -7,7 +7,12 @@ final class UnitTextField: NSTextField {
 
     override func becomeFirstResponder() -> Bool {
         let result = super.becomeFirstResponder()
-        if result { onFocus?() }
+        if result {
+            DispatchQueue.main.async { [weak self] in
+                self?.onFocus?()
+                self?.currentEditor()?.selectAll(nil)
+            }
+        }
         return result
     }
 }
@@ -444,14 +449,11 @@ final class EQWindowController: NSWindowController, NSTextFieldDelegate {
                     forkIfBuiltIn()
                     var preset = audioEngine.activePreset
                     preset.bands[index].frequency = clamped
-                    preset.bands.sort { $0.frequency < $1.frequency }
                     audioEngine.activePreset = preset
-                    buildSliders()
                     markModified()
-                    return
                 }
             }
-            field.stringValue = band.frequencyLabel
+            field.stringValue = audioEngine.activePreset.bands[index].frequencyLabel
         } else if qLabels.contains(field) {
             let text = field.stringValue.trimmingCharacters(in: .whitespaces)
             if let value = Float(text), value > 0 {
