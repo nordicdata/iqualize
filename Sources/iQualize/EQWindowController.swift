@@ -598,9 +598,9 @@ final class EQWindowController: NSWindowController, NSTextFieldDelegate {
         curveView.heightAnchor.constraint(equalToConstant: 120).isActive = true
         bandsAndCurve.addArrangedSubview(curveView)
 
-        // Curve matches sliders width
-        curveView.leadingAnchor.constraint(equalTo: slidersContainer.leadingAnchor).isActive = true
-        curveView.trailingAnchor.constraint(equalTo: slidersContainer.trailingAnchor).isActive = true
+        // Curve matches full bands row width (including + buttons)
+        curveView.leadingAnchor.constraint(equalTo: bandsAndCurve.leadingAnchor).isActive = true
+        curveView.trailingAnchor.constraint(equalTo: bandsAndCurve.trailingAnchor).isActive = true
 
         mainStack.addArrangedSubview(bandsAndCurve)
         bandsAndCurve.leadingAnchor.constraint(greaterThanOrEqualTo: mainStack.leadingAnchor, constant: 16).isActive = true
