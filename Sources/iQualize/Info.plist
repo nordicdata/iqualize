@@ -3,9 +3,9 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleIdentifier</key>
-    <string>com.perth.app</string>
+    <string>com.iqualize.app</string>
     <key>CFBundleName</key>
-    <string>Perth</string>
+    <string>iQualize</string>
     <key>CFBundleVersion</key>
     <string>0.1</string>
     <key>CFBundleShortVersionString</key>
@@ -13,6 +13,6 @@
     <key>LSUIElement</key>
     <true/>
     <key>NSAudioCaptureUsageDescription</key>
-    <string>Perth needs to capture system audio to apply equalizer effects.</string>
+    <string>iQualize needs to capture system audio to apply equalizer effects.</string>
 </dict>
 </plist>
