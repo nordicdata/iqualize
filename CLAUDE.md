@@ -28,16 +28,6 @@ Use GitHub Issues for backlog and todos. At the start of each session, check `gh
 
 When closing a task via PR, use "Fixes #N" in the PR body to auto-close the issue.
 
-## Task Tracking
-
-Use GitHub Issues for backlog and todos. At the start of each session, check `gh issue list` for open work.
-
-- **bug**: something broken
-- **feature**: new functionality
-- **polish**: UI/UX improvements
-
-When closing a task via PR, use "Fixes #N" in the PR body to auto-close the issue.
-
 ## Build & Install
 
 ```bash
