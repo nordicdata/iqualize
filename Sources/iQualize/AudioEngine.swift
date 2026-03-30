@@ -77,6 +77,11 @@ final class AudioEngine {
     nonisolated(unsafe) private var deviceChangeListenerBlock: AudioObjectPropertyListenerBlock?
     var onStateChange: (() -> Void)?
 
+    // Spectrum analyzers — one per tap point
+    let preEqAnalyzer = SpectrumAnalyzer()
+    let postEqAnalyzer = SpectrumAnalyzer()
+    private var sourceNode: AVAudioSourceNode?
+
     var activePreset: EQPresetData = .flat {
         didSet {
             applyBands(from: oldValue)
@@ -264,6 +269,7 @@ final class AudioEngine {
                                    channels: AVAudioChannelCount(channels))!
 
         let sourceNode = AVAudioSourceNode(format: format, renderBlock: renderCallback)
+        self.sourceNode = sourceNode
 
         let eqNode = AVAudioUnitEQ(numberOfBands: EQPresetData.maxBandCount)
         for (i, eqBand) in eqNode.bands.enumerated() {
@@ -289,6 +295,19 @@ final class AudioEngine {
 
         try avEngine.start()
         self.engine = avEngine
+
+        // 5b. Install spectrum analyzer taps (non-destructive, analysis only)
+        // Closures must be @Sendable — they run on the audio render thread, not main.
+        // Capture only Sendable values (SpectrumAnalyzer is @unchecked Sendable).
+        let capturedSampleRate = sampleRate
+        let preAnalyzer: SpectrumAnalyzer = self.preEqAnalyzer
+        sourceNode.installTap(onBus: 0, bufferSize: 2048, format: format) { @Sendable buffer, _ in
+            preAnalyzer.process(buffer, sampleRate: capturedSampleRate)
+        }
+        let postAnalyzer: SpectrumAnalyzer = self.postEqAnalyzer
+        eqNode.installTap(onBus: 0, bufferSize: 2048, format: format) { @Sendable buffer, _ in
+            postAnalyzer.process(buffer, sampleRate: capturedSampleRate)
+        }
 
         // 6. Install IOProc on aggregate device — captures tap audio → ring buffer
         let ioBlock: AudioDeviceIOBlock = { _, inInputData, _, outOutputData, _ in
@@ -328,6 +347,11 @@ final class AudioEngine {
 
         rtRingBuffer = nil
         ringBuffer = nil
+
+        // Remove spectrum taps before stopping engine
+        sourceNode?.removeTap(onBus: 0)
+        eq?.removeTap(onBus: 0)
+        sourceNode = nil
 
         AudioDeviceStop(aggregateDeviceID, procID)
         engine?.stop()
