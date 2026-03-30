@@ -30,7 +30,7 @@ final class MenuBarController: NSObject, @preconcurrency NSMenuDelegate {
         if let preset = presetStore.preset(for: state.selectedPresetID) {
             audioEngine.activePreset = preset
         }
-        audioEngine.preventClipping = state.preventClipping
+        audioEngine.peakLimiter = state.peakLimiter
         audioEngine.maxGainDB = state.maxGainDB
         audioEngine.bypassed = state.bypassed
         audioEngine.setEnabled(true)
@@ -92,11 +92,11 @@ final class MenuBarController: NSObject, @preconcurrency NSMenuDelegate {
         bypassItem.state = audioEngine.bypassed ? .on : .off
         menu.addItem(bypassItem)
 
-        // Prevent Clipping toggle
-        let clippingItem = NSMenuItem(title: "Prevent Clipping",
+        // Peak Limiter toggle
+        let clippingItem = NSMenuItem(title: "Peak Limiter",
                                        action: #selector(toggleClipping(_:)), keyEquivalent: "")
         clippingItem.target = self
-        clippingItem.state = audioEngine.preventClipping ? .on : .off
+        clippingItem.state = audioEngine.peakLimiter ? .on : .off
         menu.addItem(clippingItem)
 
         menu.addItem(.separator())
@@ -180,8 +180,8 @@ final class MenuBarController: NSObject, @preconcurrency NSMenuDelegate {
     }
 
     @objc private func toggleClipping(_ sender: NSMenuItem) {
-        audioEngine.preventClipping.toggle()
-        state.preventClipping = audioEngine.preventClipping
+        audioEngine.peakLimiter.toggle()
+        state.peakLimiter = audioEngine.peakLimiter
         state.save()
     }
 
