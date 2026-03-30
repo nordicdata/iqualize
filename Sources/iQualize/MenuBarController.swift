@@ -51,10 +51,14 @@ final class MenuBarController: NSObject, @preconcurrency NSMenuDelegate {
     private func populateMenu(_ menu: NSMenu) {
         menu.removeAllItems()
 
-        // Built-in presets
+        // Presets submenu
+        let presetMenuItem = NSMenuItem(title: "Presets (\(audioEngine.activePreset.name))",
+                                         action: nil, keyEquivalent: "")
+        let presetSubmenu = NSMenu()
+
         let builtInHeader = NSMenuItem(title: "Built-in", action: nil, keyEquivalent: "")
         builtInHeader.isEnabled = false
-        menu.addItem(builtInHeader)
+        presetSubmenu.addItem(builtInHeader)
         for preset in EQPresetData.builtInPresets {
             let item = NSMenuItem(title: preset.name,
                                   action: #selector(selectPreset(_:)), keyEquivalent: "")
@@ -62,15 +66,14 @@ final class MenuBarController: NSObject, @preconcurrency NSMenuDelegate {
             item.representedObject = preset.id.uuidString
             item.state = audioEngine.activePreset.id == preset.id ? .on : .off
             item.indentationLevel = 1
-            menu.addItem(item)
+            presetSubmenu.addItem(item)
         }
 
-        // Custom presets (if any)
         if !presetStore.customPresets.isEmpty {
-            menu.addItem(.separator())
+            presetSubmenu.addItem(.separator())
             let customHeader = NSMenuItem(title: "Custom", action: nil, keyEquivalent: "")
             customHeader.isEnabled = false
-            menu.addItem(customHeader)
+            presetSubmenu.addItem(customHeader)
             for preset in presetStore.customPresets {
                 let item = NSMenuItem(title: preset.name,
                                       action: #selector(selectPreset(_:)), keyEquivalent: "")
@@ -78,9 +81,12 @@ final class MenuBarController: NSObject, @preconcurrency NSMenuDelegate {
                 item.representedObject = preset.id.uuidString
                 item.state = audioEngine.activePreset.id == preset.id ? .on : .off
                 item.indentationLevel = 1
-                menu.addItem(item)
+                presetSubmenu.addItem(item)
             }
         }
+
+        presetMenuItem.submenu = presetSubmenu
+        menu.addItem(presetMenuItem)
 
         menu.addItem(.separator())
 
