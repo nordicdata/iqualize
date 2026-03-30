@@ -6,7 +6,6 @@ struct iQualizeState: Codable {
     var isEnabled: Bool
     var selectedPresetID: UUID
     var peakLimiter: Bool
-    var lowLatency: Bool
     var windowOpen: Bool
     var maxGainDB: Float
     var bypassed: Bool
@@ -16,7 +15,6 @@ struct iQualizeState: Codable {
         isEnabled: false,
         selectedPresetID: EQPresetData.flat.id,
         peakLimiter: true,
-        lowLatency: false,
         windowOpen: false,
         maxGainDB: 12,
         bypassed: false,

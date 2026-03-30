@@ -88,10 +88,6 @@ final class AudioEngine {
         didSet { applyBands() }
     }
 
-    var lowLatency: Bool = false {
-        didSet { if isRunning { rebuildEngine() } }
-    }
-
     var bypassed: Bool = false {
         didSet { applyBands() }
     }
@@ -242,7 +238,7 @@ final class AudioEngine {
         }
 
         // 5. Set up ring buffer + AVAudioEngine with EQ
-        let bufferSeconds = lowLatency ? 0.05 : 0.5
+        let bufferSeconds = 0.5
         let ringBuf = AudioRingBuffer(capacityFrames: Int(sampleRate * bufferSeconds), channels: Int(channels))
         self.ringBuffer = ringBuf
         rtRingBuffer = ringBuf
@@ -423,18 +419,6 @@ final class AudioEngine {
         eq.globalGain = 0
         limiter?.bypass = !peakLimiter || bypassed
         eq.bypass = bypassed || activePreset.isFlat
-    }
-
-    private func rebuildEngine() {
-        let wasRunning = isRunning
-        if wasRunning { stop() }
-        if wasRunning {
-            do {
-                try start()
-            } catch {
-                self.error = error.localizedDescription
-            }
-        }
     }
 
     // MARK: - Device Change Handling
