@@ -311,60 +311,88 @@ final class FrequencyResponseView: NSView {
         }
     }
 
-    /// Draws a smooth filled spectrum curve for a single data source.
-    private func drawSpectrum(
+    /// Draws the Pre-EQ spectrum stroke (no fill, no peak hold).
+    private func drawPreEqLine(
         _ data: SpectrumData,
         in plotRect: CGRect,
-        ctx: CGContext,
-        fillColor: NSColor,
-        edgeColor: NSColor,
-        peakColor: NSColor
+        ctx: CGContext
     ) {
         data.read(specMagnitudes, peaks: specPeaks)
 
         let points = spectrumPoints(specMagnitudes, in: plotRect)
         guard points.count >= 2 else { return }
 
-        // Filled area: bottom-left → spline curve → bottom-right → close
-        // Must NOT use move(to:) inside the spline to keep the path contiguous
-        ctx.saveGState()
-        ctx.beginPath()
-        ctx.move(to: CGPoint(x: points[0].x, y: plotRect.minY))
-        ctx.addLine(to: points[0])
-        addCatmullRomSpline(points, to: ctx)  // continues from points[0], no move
-        ctx.addLine(to: CGPoint(x: points.last!.x, y: plotRect.minY))
-        ctx.closePath()
-        ctx.setFillColor(fillColor.cgColor)
-        ctx.fillPath()
-        ctx.restoreGState()
-
-        // Edge line (smooth spline along the top)
         ctx.saveGState()
         ctx.beginPath()
         addCatmullRomSpline(points, to: ctx, moveToStart: true)
-        ctx.setStrokeColor(edgeColor.cgColor)
-        ctx.setLineWidth(1.0)
+        ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.40).cgColor)
+        ctx.setLineWidth(1.5)
         ctx.setLineJoin(.round)
         ctx.setLineCap(.round)
         ctx.strokePath()
         ctx.restoreGState()
+    }
 
-        // Peak hold line (smooth spline at peak values)
+    /// Draws the Post-EQ spectrum fill and edge stroke (no peak hold).
+    private func drawPostEqFillAndEdge(
+        _ data: SpectrumData,
+        in plotRect: CGRect,
+        ctx: CGContext
+    ) {
+        data.read(specMagnitudes, peaks: specPeaks)
+
+        let points = spectrumPoints(specMagnitudes, in: plotRect)
+        guard points.count >= 2 else { return }
+
+        // Filled area
+        ctx.saveGState()
+        ctx.beginPath()
+        ctx.move(to: CGPoint(x: points[0].x, y: plotRect.minY))
+        ctx.addLine(to: points[0])
+        addCatmullRomSpline(points, to: ctx)
+        ctx.addLine(to: CGPoint(x: points.last!.x, y: plotRect.minY))
+        ctx.closePath()
+        ctx.setFillColor(NSColor.white.withAlphaComponent(0.15).cgColor)
+        ctx.fillPath()
+        ctx.restoreGState()
+
+        // Edge line
+        ctx.saveGState()
+        ctx.beginPath()
+        addCatmullRomSpline(points, to: ctx, moveToStart: true)
+        ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.50).cgColor)
+        ctx.setLineWidth(1.5)
+        ctx.setLineJoin(.round)
+        ctx.setLineCap(.round)
+        ctx.strokePath()
+        ctx.restoreGState()
+    }
+
+    /// Draws the peak hold line for a spectrum data source.
+    private func drawSpectrumPeakHold(
+        _ data: SpectrumData,
+        in plotRect: CGRect,
+        ctx: CGContext,
+        color: NSColor,
+        lineWidth: CGFloat
+    ) {
+        data.read(specMagnitudes, peaks: specPeaks)
+
         let peakPoints = spectrumPoints(specPeaks, in: plotRect)
         var hasPeaks = false
         for i in 0..<SpectrumData.binCount {
             if specPeaks[i] > -79 { hasPeaks = true; break }
         }
-        if hasPeaks {
-            ctx.saveGState()
-            ctx.beginPath()
-            addCatmullRomSpline(peakPoints, to: ctx, moveToStart: true)
-            ctx.setStrokeColor(peakColor.cgColor)
-            ctx.setLineWidth(0.5)
-            ctx.setLineCap(.round)
-            ctx.strokePath()
-            ctx.restoreGState()
-        }
+        guard hasPeaks else { return }
+
+        ctx.saveGState()
+        ctx.beginPath()
+        addCatmullRomSpline(peakPoints, to: ctx, moveToStart: true)
+        ctx.setStrokeColor(color.cgColor)
+        ctx.setLineWidth(lineWidth)
+        ctx.setLineCap(.round)
+        ctx.strokePath()
+        ctx.restoreGState()
     }
 
     /// Per-band gain contribution using filter-type-appropriate response curves.
@@ -537,17 +565,22 @@ final class FrequencyResponseView: NSView {
             ctx.saveGState()
             ctx.clip(to: spectrumRect)
 
+            // Z-order: Pre-EQ line → Post-EQ fill+edge → Pre-EQ peak → Post-EQ peak
             if preEqSpectrumEnabled, let data = preEqSpectrumData {
-                drawSpectrum(data, in: spectrumRect, ctx: ctx,
-                             fillColor: NSColor.systemGray.withAlphaComponent(0.06),
-                             edgeColor: NSColor.systemGray.withAlphaComponent(0.20),
-                             peakColor: NSColor.systemGray.withAlphaComponent(0.15))
+                drawPreEqLine(data, in: spectrumRect, ctx: ctx)
             }
             if postEqSpectrumEnabled, let data = postEqSpectrumData {
-                drawSpectrum(data, in: spectrumRect, ctx: ctx,
-                             fillColor: NSColor.systemTeal.withAlphaComponent(0.08),
-                             edgeColor: NSColor.systemTeal.withAlphaComponent(0.35),
-                             peakColor: NSColor.white.withAlphaComponent(0.20))
+                drawPostEqFillAndEdge(data, in: spectrumRect, ctx: ctx)
+            }
+            if preEqSpectrumEnabled, let data = preEqSpectrumData {
+                drawSpectrumPeakHold(data, in: spectrumRect, ctx: ctx,
+                                     color: NSColor.white.withAlphaComponent(0.20),
+                                     lineWidth: 1.0)
+            }
+            if postEqSpectrumEnabled, let data = postEqSpectrumData {
+                drawSpectrumPeakHold(data, in: spectrumRect, ctx: ctx,
+                                     color: NSColor.white.withAlphaComponent(0.25),
+                                     lineWidth: 1.0)
             }
 
             ctx.restoreGState()
