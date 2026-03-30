@@ -12,6 +12,7 @@ struct iQualizeState: Codable {
     var autoScale: Bool
     var preEqSpectrumEnabled: Bool
     var postEqSpectrumEnabled: Bool
+    var hideFromDock: Bool
 
     static let defaultState = iQualizeState(
         isEnabled: false,
@@ -22,12 +23,13 @@ struct iQualizeState: Codable {
         bypassed: false,
         autoScale: true,
         preEqSpectrumEnabled: false,
-        postEqSpectrumEnabled: false
+        postEqSpectrumEnabled: false,
+        hideFromDock: false
     )
 
     private static let key = "com.iqualize.state"
 
-    init(isEnabled: Bool, selectedPresetID: UUID, peakLimiter: Bool, windowOpen: Bool = false, maxGainDB: Float = 12, bypassed: Bool = false, autoScale: Bool = true, preEqSpectrumEnabled: Bool = false, postEqSpectrumEnabled: Bool = false) {
+    init(isEnabled: Bool, selectedPresetID: UUID, peakLimiter: Bool, windowOpen: Bool = false, maxGainDB: Float = 12, bypassed: Bool = false, autoScale: Bool = true, preEqSpectrumEnabled: Bool = false, postEqSpectrumEnabled: Bool = false, hideFromDock: Bool = false) {
         self.isEnabled = isEnabled
         self.selectedPresetID = selectedPresetID
         self.peakLimiter = peakLimiter
@@ -37,6 +39,7 @@ struct iQualizeState: Codable {
         self.autoScale = autoScale
         self.preEqSpectrumEnabled = preEqSpectrumEnabled
         self.postEqSpectrumEnabled = postEqSpectrumEnabled
+        self.hideFromDock = hideFromDock
     }
 
     init(from decoder: Decoder) throws {
@@ -50,6 +53,7 @@ struct iQualizeState: Codable {
         autoScale = (try? container.decode(Bool.self, forKey: .autoScale)) ?? true
         preEqSpectrumEnabled = (try? container.decode(Bool.self, forKey: .preEqSpectrumEnabled)) ?? false
         postEqSpectrumEnabled = (try? container.decode(Bool.self, forKey: .postEqSpectrumEnabled)) ?? false
+        hideFromDock = (try? container.decode(Bool.self, forKey: .hideFromDock)) ?? false
     }
 
     static func load() -> iQualizeState {
