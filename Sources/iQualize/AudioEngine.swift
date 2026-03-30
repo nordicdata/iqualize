@@ -70,6 +70,7 @@ final class AudioEngine {
     private var procID: AudioDeviceIOProcID?
     private var engine: AVAudioEngine?
     private var eq: AVAudioUnitEQ?
+    private var limiter: AVAudioUnitEffect?
     private var ringBuffer: AudioRingBuffer?
     private var tapUUID = UUID()
 
@@ -88,12 +89,8 @@ final class AudioEngine {
         }
     }
 
-    var preventClipping: Bool = true {
+    var peakLimiter: Bool = true {
         didSet { applyBands() }
-    }
-
-    var lowLatency: Bool = false {
-        didSet { if isRunning { rebuildEngine() } }
     }
 
     var bypassed: Bool = false {
@@ -246,7 +243,7 @@ final class AudioEngine {
         }
 
         // 5. Set up ring buffer + AVAudioEngine with EQ
-        let bufferSeconds = lowLatency ? 0.05 : 0.5
+        let bufferSeconds = 0.5
         let ringBuf = AudioRingBuffer(capacityFrames: Int(sampleRate * bufferSeconds), channels: Int(channels))
         self.ringBuffer = ringBuf
         rtRingBuffer = ringBuf
@@ -284,14 +281,32 @@ final class AudioEngine {
                 eqBand.bypass = true
             }
         }
-        eqNode.globalGain = preventClipping ? activePreset.preampGain : 0
+        eqNode.globalGain = 0
         eqNode.bypass = bypassed || activePreset.isFlat
         self.eq = eqNode
 
+        // Peak limiter: dynamic limiting at 0 dBFS (replaces static preamp hack)
+        let limiterDesc = AudioComponentDescription(
+            componentType: kAudioUnitType_Effect,
+            componentSubType: kAudioUnitSubType_PeakLimiter,
+            componentManufacturer: kAudioUnitManufacturer_Apple,
+            componentFlags: 0,
+            componentFlagsMask: 0
+        )
+        let limiterNode = AVAudioUnitEffect(audioComponentDescription: limiterDesc)
+        let au = limiterNode.audioUnit
+        AudioUnitSetParameter(au, kLimiterParam_AttackTime, kAudioUnitScope_Global, 0, 0.007, 0)
+        AudioUnitSetParameter(au, kLimiterParam_DecayTime, kAudioUnitScope_Global, 0, 0.024, 0)
+        AudioUnitSetParameter(au, kLimiterParam_PreGain, kAudioUnitScope_Global, 0, 0.0, 0)
+        limiterNode.bypass = !peakLimiter || bypassed
+        self.limiter = limiterNode
+
         avEngine.attach(sourceNode)
         avEngine.attach(eqNode)
+        avEngine.attach(limiterNode)
         avEngine.connect(sourceNode, to: eqNode, format: format)
-        avEngine.connect(eqNode, to: avEngine.outputNode, format: format)
+        avEngine.connect(eqNode, to: limiterNode, format: format)
+        avEngine.connect(limiterNode, to: avEngine.outputNode, format: format)
 
         try avEngine.start()
         self.engine = avEngine
@@ -357,6 +372,7 @@ final class AudioEngine {
         engine?.stop()
         engine = nil
         eq = nil
+        limiter = nil
 
         if let procID {
             AudioDeviceDestroyIOProcID(aggregateDeviceID, procID)
@@ -424,20 +440,9 @@ final class AudioEngine {
             }
         }
 
-        eq.globalGain = preventClipping ? activePreset.preampGain : 0
+        eq.globalGain = 0
+        limiter?.bypass = !peakLimiter || bypassed
         eq.bypass = bypassed || activePreset.isFlat
-    }
-
-    private func rebuildEngine() {
-        let wasRunning = isRunning
-        if wasRunning { stop() }
-        if wasRunning {
-            do {
-                try start()
-            } catch {
-                self.error = error.localizedDescription
-            }
-        }
     }
 
     // MARK: - Device Change Handling
