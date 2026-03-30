@@ -2,6 +2,15 @@
 
 All notable changes to iQualize will be documented in this file.
 
+## [0.17.0] - 2026-03-30
+
+### Changed
+- Move presets into a submenu in the menu bar dropdown to reduce clutter; active preset name shown in parent item
+- Redesign Pre-EQ spectrum layer: remove fill, render as white ghost stroke (40% opacity, 1.5pt)
+- Redesign Post-EQ spectrum to monochrome white fill (15% opacity) with white edge stroke (50% opacity)
+- Split spectrum drawing into independent z-ordered passes for correct layering: Pre-EQ line, Post-EQ fill, Pre-EQ peak hold, Post-EQ peak hold
+- Unify peak hold lines to white at 20-25% opacity for a cohesive monochrome look
+
 ## [0.16.0] - 2026-03-30
 
 ### Added
