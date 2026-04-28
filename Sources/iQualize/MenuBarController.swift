@@ -226,7 +226,7 @@ final class MenuBarController: NSObject, @preconcurrency NSMenuDelegate {
         s.bypassed = audioEngine.bypassed
         s.save()
         updateIcon()
-        eqWindowController?.syncBypass(audioEngine.bypassed)
+        // Bypass state is now synced automatically via SettingsStateManager bindings
     }
 
     @objc private func showAbout(_ sender: NSMenuItem) {
